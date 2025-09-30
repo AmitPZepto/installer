@@ -175,11 +175,9 @@ else
 fi
 echo "--------------------------------------------------"
 
-# --- Find the 'code' command ---
+# --- Find the command-line tools ---
 
-log "Searching for the 'code' command-line tool..."
-
-CODE_CMD=""
+log "Searching for VS Code and Cursor command-line tools..."
 
 # An array of the targeted application names.
 declare -a target_app_names=(
@@ -193,32 +191,40 @@ declare -a standard_app_paths=(
     "$HOME/Applications"
 )
 
+# Array to store found code commands
+declare -a found_code_commands=()
+
 echo "Will check for apps: ${target_app_names[*]}"
 echo "In directories: ${standard_app_paths[*]}"
 echo "--------------------------------------------------"
 
-# Loop through possible paths and application names to find the 'code' executable.
+# Loop through possible paths and application names to find the command-line tools.
 for app_path in "${standard_app_paths[@]}"; do
     for app_name in "${target_app_names[@]}"; do
-        potential_code_path="${app_path}/${app_name}/Contents/Resources/app/bin/code"
-        echo "Checking for: ${potential_code_path}"
-        if [ -f "$potential_code_path" ]; then
-            log "SUCCESS: Found command-line tool for '${app_name}'"
-            CODE_CMD="$potential_code_path"
-            break 2 # Break out of both loops once found.
-        fi
+        # Check for both 'code' and 'cursor' commands
+        for cmd_name in "code" "cursor"; do
+            potential_cmd_path="${app_path}/${app_name}/Contents/Resources/app/bin/${cmd_name}"
+            echo "Checking for: ${potential_cmd_path}"
+            if [ -f "$potential_cmd_path" ]; then
+                log "SUCCESS: Found command-line tool '${cmd_name}' for '${app_name}'"
+                found_code_commands+=("$potential_cmd_path")
+            fi
+        done
     done
 done
 
 echo "--------------------------------------------------"
-# --- Check if 'code' command was found ---
+# --- Check if any 'code' commands were found ---
 
-if [ -z "$CODE_CMD" ]; then
+if [ ${#found_code_commands[@]} -eq 0 ]; then
     log "ERROR: Could not find the command-line tool for VS Code or Cursor in standard locations."
     log "Installation of the VSIX extension will be skipped."
     exit 1
 else
-    log "Final 'code' command path set to: '${CODE_CMD}'"
+    log "Found ${#found_code_commands[@]} code command(s):"
+    for i in "${!found_code_commands[@]}"; do
+        log "  $((i+1)). ${found_code_commands[i]}"
+    done
 fi
 echo "--------------------------------------------------"
 
@@ -238,16 +244,24 @@ echo "--------------------------------------------------"
 
 # --- Install the Extension ---
 
-log "Preparing to install the extension."
-echo "Executing: \"$CODE_CMD\" --install-extension \"$VSIX_PATH\" --force"
+log "Preparing to install the extension in all found applications."
 
-if ! "$CODE_CMD" --install-extension "$VSIX_PATH" --force; then
-    log "ERROR: Failed to install the extension."
-    rm -f "$VSIX_PATH"
-    exit 1
-fi
+# Install extension in each found application
+for i in "${!found_code_commands[@]}"; do
+    current_code_cmd="${found_code_commands[i]}"
+    log "Installing extension using: ${current_code_cmd}"
+    echo "Executing: \"$current_code_cmd\" --install-extension \"$VSIX_PATH\" --force"
+    
+    if ! "$current_code_cmd" --install-extension "$VSIX_PATH" --force; then
+        log "ERROR: Failed to install the extension using ${current_code_cmd}"
+        # Continue with other applications even if one fails
+    else
+        log "SUCCESS: Extension installed using ${current_code_cmd}"
+    fi
+    echo "--------------------------------------------------"
+done
 
-log "Successfully installed the extension."
+log "Extension installation process completed for all found applications."
 echo "--------------------------------------------------"
 
 # --- Cleanup ---
